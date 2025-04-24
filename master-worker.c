@@ -42,15 +42,17 @@ void *generate_requests_loop(void *data) {
     while (curr_buf_size == max_buf_size)
       pthread_cond_wait(&not_full, &mutex);
 
+    // Check again inside buffer-ready zone
     if (item_to_produce >= total_items) {
+      pthread_cond_broadcast(&not_empty);  // wake up any consumers waiting
       pthread_mutex_unlock(&mutex);
       break;
     }
 
-    buffer[(curr_buf_size) % max_buf_size] = item_to_produce;
-    print_produced(item_to_produce, thread_id);
+    int item = item_to_produce++;  // Atomic reservation of the item number
+    buffer[(curr_buf_size + next_item_index) % max_buf_size] = item;
+    print_produced(item, thread_id);
     curr_buf_size++;
-    item_to_produce++;
 
     pthread_cond_signal(&not_empty);
     pthread_mutex_unlock(&mutex);
@@ -70,6 +72,7 @@ void *consume_requests_loop(void *data) {
       pthread_cond_wait(&not_empty, &mutex);
 
     if (items_consumed >= total_items) {
+      pthread_cond_broadcast(&not_full);  // wake up any producers
       pthread_mutex_unlock(&mutex);
       break;
     }
